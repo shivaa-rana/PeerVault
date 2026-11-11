@@ -4,12 +4,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
-import javax.validation.ConstraintViolationException;
+import jakarta.validation.ConstraintViolationException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -40,6 +42,40 @@ public class GlobalExceptionHandler {
         log.warn(ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(error("conflict", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ApiConflictException.class)
+    public ResponseEntity<Map<String, String>> handleApiConflict(ApiConflictException ex) {
+        log.warn("Request conflict: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error("conflict", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleResourceNotFound(ResourceNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error("resource_not_found"));
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<Map<String, String>> handleBadCredentials(BadCredentialsException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error("invalid_credentials"));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error("invalid_request", ex.getMessage()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleIntegrityConflict(DataIntegrityViolationException ex) {
+        log.warn("Database constraint rejected a request");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error("constraint_conflict"));
+    }
+
+    @ExceptionHandler(ProviderUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleProviderUnavailable(ProviderUnavailableException ex) {
+        log.warn("Payment provider unavailable: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(error("payment_provider_unavailable"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

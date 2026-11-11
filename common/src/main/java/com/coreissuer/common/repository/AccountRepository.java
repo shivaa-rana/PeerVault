@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
-import javax.persistence.LockModeType;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 
 @Repository

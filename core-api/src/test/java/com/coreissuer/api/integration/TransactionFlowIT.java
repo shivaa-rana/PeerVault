@@ -17,7 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -29,29 +29,30 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integration tests requiring Docker (Testcontainers spins up a real MySQL 8 instance).
+ * Integration tests requiring Docker (Testcontainers spins up a real PostgreSQL instance).
  * Run with: ./mvnw test -pl core-api -Dtest=TransactionFlowIT
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
 @TestPropertySource(properties = {
         "coreissuer.security.pepper=test-pepper-value-for-it",
+        "coreissuer.jwt.secret=integration-test-jwt-secret-at-least-thirty-two-bytes",
         "coreissuer.security.admin-user=it-admin",
         "coreissuer.security.admin-password=it-password"
 })
 class TransactionFlowIT {
 
     @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("coreissuer")
-            .withUsername("coreissuer")
-            .withPassword("coreissuer");
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+            .withDatabaseName("peervault")
+            .withUsername("peervault")
+            .withPassword("integration-test-password");
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
     }
 
     @Autowired private TransactionService transactionService;

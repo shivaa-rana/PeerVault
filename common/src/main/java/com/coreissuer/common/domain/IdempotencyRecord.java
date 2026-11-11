@@ -4,7 +4,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 @Entity
@@ -27,7 +29,8 @@ public class IdempotencyRecord {
     @Column(name = "response_status", nullable = false)
     private Integer responseStatus;
 
-    @Column(name = "response_body", columnDefinition = "JSON", nullable = false)
+    @Column(name = "response_body", columnDefinition = "jsonb", nullable = false)
+    @JdbcTypeCode(SqlTypes.JSON)
     private String responseBody;
 
     @Column(name = "created_at", nullable = false, updatable = false)

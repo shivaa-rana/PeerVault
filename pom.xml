@@ -6,34 +6,29 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.18</version>
+        <version>3.4.4</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.coreissuer</groupId>
-    <artifactId>core-issuer</artifactId>
+    <artifactId>peervault-parent</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>core-issuer</name>
-    <description>CoreIssuer - Payment Engine</description>
+    <name>PeerVault</name>
+    <description>PeerVault digital wallet and payment platform</description>
 
     <modules>
         <module>common</module>
         <module>core-api</module>
-        <module>admin-struts</module>
     </modules>
 
     <properties>
-        <java.version>1.8</java.version>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
+        <java.version>17</java.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <lombok.version>1.18.30</lombok.version>
-        <springdoc.version>1.7.0</springdoc.version>
+        <springdoc.version>2.8.6</springdoc.version>
         <!-- 1.21+ required for Docker Engine 29 (minimum API version 1.44) -->
         <testcontainers.version>1.21.3</testcontainers.version>
         <docker-java.version>3.5.3</docker-java.version>
-        <!-- 2.5.33 fixes CVE-2023-50164 (file-upload path traversal) -->
-        <struts.version>2.5.33</struts.version>
     </properties>
 
     <dependencyManagement>
@@ -83,9 +78,7 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>3.11.0</version>
                     <configuration>
-                        <!-- The Docker images run a Java 8 JRE: release=8 makes any use of
-                             Java 9+ APIs a compile error instead of a production crash. -->
-                        <release>8</release>
+                        <release>17</release>
                         <annotationProcessorPaths>
                             <path>
                                 <groupId>org.mapstruct</groupId>
@@ -108,4 +101,5 @@
             </plugins>
         </pluginManagement>
     </build>
+
 </project>

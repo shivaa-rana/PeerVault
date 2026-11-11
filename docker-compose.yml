@@ -1,53 +1,88 @@
 services:
-  mysql:
-    image: mysql:8.0
+  postgres:
+    image: postgres:16-alpine
     environment:
-      MYSQL_DATABASE: coreissuer
-      MYSQL_USER: coreissuer
-      MYSQL_PASSWORD: ${DB_PASSWORD:-coreissuer}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      POSTGRES_DB: peervault
+      POSTGRES_USER: peervault
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     ports:
-      - "127.0.0.1:3306:3306"
+      - "127.0.0.1:5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "coreissuer", "-p${DB_PASSWORD:-coreissuer}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U peervault -d peervault"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    restart: unless-stopped
 
-  core-api:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
     build:
       context: .
       dockerfile: core-api/Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/peervault
+      DB_USER: peervault
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PEERVAULT_JWT_SECRET: ${PEERVAULT_JWT_SECRET:?Set PEERVAULT_JWT_SECRET in .env}
+      COREISSUER_PEPPER: ${COREISSUER_PEPPER:?Set COREISSUER_PEPPER in .env}
+      PEERVAULT_CORS_ALLOWED_ORIGINS: http://localhost:3000
+      PEERVAULT_ADMIN_EMAIL: ${PEERVAULT_ADMIN_EMAIL:-}
+      PEERVAULT_ADMIN_PASSWORD: ${PEERVAULT_ADMIN_PASSWORD:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      DEFAULT_CURRENCY: INR
+      SUPPORTED_CURRENCIES: INR,USD
     ports:
       - "8080:8080"
-    environment:
-      DB_URL: jdbc:mysql://mysql:3306/coreissuer?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-      DB_USER: coreissuer
-      DB_PASSWORD: ${DB_PASSWORD:-coreissuer}
-      # Required — compose fails fast if these are missing from .env
-      COREISSUER_PEPPER: ${COREISSUER_PEPPER:?set COREISSUER_PEPPER in .env}
-      ADMIN_USER: ${ADMIN_USER:?set ADMIN_USER in .env}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
-      WEBHOOK_TARGET_URL: ${WEBHOOK_TARGET_URL:-}
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
 
-  admin-struts:
+  frontend:
     build:
-      context: .
-      dockerfile: admin-struts/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8080
+        VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
     ports:
-      - "8081:8081"
-    environment:
-      DB_URL: jdbc:mysql://mysql:3306/coreissuer?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-      DB_USER: coreissuer
-      DB_PASSWORD: ${DB_PASSWORD:-coreissuer}
+      - "127.0.0.1:3000:80"
     depends_on:
-      mysql:
+      api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ | grep -q PeerVault"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
 volumes:
-  mysql_data:
+  postgres_data:
+  redis_data:

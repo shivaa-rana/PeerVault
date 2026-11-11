@@ -1,57 +1,94 @@
 package com.coreissuer.api.config;
 
+import com.coreissuer.api.security.JwtAuthenticationFilter;
+import com.coreissuer.api.security.AuthRateLimitFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-/**
- * Admin/back-office endpoints require HTTP Basic credentials supplied via
- * environment (no defaults — startup fails if unset). Merchant-facing
- * endpoints stay open here: in a real deployment they sit behind gateway
- * authentication (API keys / mTLS), which is out of scope for this service.
- */
+import java.io.IOException;
+import java.util.List;
+
 @Configuration
-@EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            // Stateless JSON API: no session cookies, so CSRF does not apply.
-            .csrf().disable()
-            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            .and()
-            .authorizeRequests()
-                .antMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                .anyRequest().permitAll()
-            .and()
-            .httpBasic();
-        return http.build();
+    SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
+                                    AuthRateLimitFilter rateLimitFilter,
+                                    CorsConfigurationSource corsConfigurationSource) throws Exception {
+        return http
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/**", "/api/payments/stripe/webhook",
+                                "/actuator/health", "/v3/api-docs/**",
+                                "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/api/v1/**", "/api/admin/**").hasRole("ADMIN")
+                        .anyRequest().authenticated())
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint((request, response, exception) ->
+                                writeError(response, HttpStatus.UNAUTHORIZED, "unauthorized"))
+                        .accessDeniedHandler((request, response, exception) ->
+                                writeError(response, HttpStatus.FORBIDDEN, "forbidden")))
+                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(jwtFilter, AuthRateLimitFilter.class)
+                .build();
     }
 
     @Bean
-    public UserDetailsService userDetailsService(
-            @Value("${coreissuer.security.admin-user}") String adminUser,
-            @Value("${coreissuer.security.admin-password}") String adminPassword,
-            PasswordEncoder passwordEncoder) {
-        return new InMemoryUserDetailsManager(
-                User.withUsername(adminUser)
-                        .password(passwordEncoder.encode(adminPassword))
-                        .roles("ADMIN")
-                        .build());
+    CorsConfigurationSource corsConfigurationSource(
+            @Value("${coreissuer.cors.allowed-origins:http://localhost:3000}") List<String> allowedOrigins) {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(allowedOrigins);
+        configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key"));
+        configuration.setAllowCredentials(false);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration);
+        return source;
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
+    PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    org.springframework.boot.web.servlet.FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration(
+            JwtAuthenticationFilter filter) {
+        var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    org.springframework.boot.web.servlet.FilterRegistrationBean<AuthRateLimitFilter> authRateLimitRegistration(
+            AuthRateLimitFilter filter) {
+        var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    private static void writeError(jakarta.servlet.http.HttpServletResponse response,
+                                   HttpStatus status, String code) throws IOException {
+        response.setStatus(status.value());
+        response.setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+        response.getWriter().write("{\"error\":\"" + code + "\"}");
     }
 }
